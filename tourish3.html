@@ -174,6 +174,9 @@
     async function handleLocation(position) {
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
+      initMap(lat, lon);
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
       let statusText = `Your location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 
       if (navigator.onLine) {
@@ -217,6 +220,24 @@
     window.addEventListener('offline', () => isOnline = false);
 
     start();
+  </script>
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-sA+4O7rG2pHTjFZ45xxGP9Jd2P77YZ3/jDWl2e2M/tk=" crossorigin="">
+  <script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-QVt7zvNPOVS20hYl9ABkPWxC7nAoYz4tbI4qJZ6YjSI=" crossorigin=""></script>
+  <script>
+    let map, marker;
+
+    function initMap(lat, lon) {
+      if (!map) {
+        map = L.map('map').setView([lat, lon], 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+          attribution: '&copy; OpenStreetMap contributors'
+        }).addTo(map);
+        marker = L.marker([lat, lon]).addTo(map);
+      } else {
+        map.setView([lat, lon], 15);
+        marker.setLatLng([lat, lon]);
+      }
+    }
   </script>
 </body>
 </html>
