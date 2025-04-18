@@ -172,26 +172,33 @@
       return R * c;
     }
 
-    async function handleLocation(position) {
+    function handleLocation(position) {
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
       initMap(lat, lon);
+      processLocation(lat, lon);
+    }
+
+    async function processLocation(lat, lon) {
       let statusText = `Your location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 
       if (navigator.onLine) {
         try {
           const placeName = await getPlaceName(lat, lon);
-          statusText += `\nNearest place: ${placeName}`;
+          statusText += `
+Nearest place: ${placeName}`;
           const summary = await getWikipediaSummary(placeName);
           if (summary) speak(summary);
         } catch (error) {
           console.warn("Online lookup failed, falling back to offline.");
         }
       } else {
-        statusText += "\nOffline mode active.";
+        statusText += "
+Offline mode active.";
       }
 
       document.getElementById("status").textContent = statusText;
+    }
     }
 
     function showPermissionHelp() {
@@ -240,3 +247,4 @@
   </script>
 </body>
 </html>
+
