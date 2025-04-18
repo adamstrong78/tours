@@ -1,0 +1,200 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Smart GPS Audio Guide (Auto Mode)</title>
+  <style>
+    body { font-family: sans-serif; padding: 20px; }
+    #status { margin-top: 20px; font-size: 1.2em; white-space: pre-line; }
+    #image-container { margin-top: 20px; text-align: center; }
+    #image-container img {
+      max-width: 100%;
+      border-radius: 8px;
+      box-shadow: 0 0 10px rgba(0,0,0,0.2);
+      opacity: 0;
+      transition: opacity 1s ease-in;
+    }
+    #image-container.show img {
+      opacity: 1;
+    }
+    #caption {
+      margin-top: 10px;
+      font-style: italic;
+      color: #555;
+    }
+    .error { color: red; }
+    #wake-toggle, #routing-controls, #pause-toggle { margin-top: 20px; display: block; }
+  #paused-indicator { margin-top: 10px; color: orange; font-weight: bold; display: none; }
+</style>
+</head>
+<body>
+  <h1>Smart GPS Audio Guide</h1>
+  <p>This webpage narrates information about nearby landmarks. It uses live data when online and switches to offline mode when not.</p>
+  <button id="wake-toggle">Keep Screen Awake: ON</button>
+  <button id="pause-toggle">Pause Tour</button>
+  <label id="routing-controls">
+    Route Mode:
+    <select id="route-mode">
+      <option value="walking">Walking</option>
+      <option value="cycling">Cycling</option>
+      <option value="driving">Driving</option>
+    </select>
+  </label>
+  
+  <div id="paused-indicator">⏸️ Tour is paused</div>
+  <div id="image-container"></div>
+
+  <script>
+    let wakeLock = null;
+    let keepAwake = true;
+    let lastSpoken = "";
+    let isOnline = navigator.onLine;
+    let watchId = null;
+    let tourPaused = false;
+
+    async function requestWakeLock() {
+      try {
+        if ('wakeLock' in navigator && keepAwake) {
+          wakeLock = await navigator.wakeLock.request('screen');
+          wakeLock.addEventListener('release', () => {
+            console.log('Screen Wake Lock released');
+          });
+        }
+      } catch (err) {
+        console.warn('Wake Lock not supported or failed:', err);
+      }
+    }
+
+    function releaseWakeLock() {
+      if (wakeLock) {
+        wakeLock.release();
+        wakeLock = null;
+      }
+    }
+
+    document.getElementById("wake-toggle").addEventListener("click", () => {
+      keepAwake = !keepAwake;
+      document.getElementById("wake-toggle").textContent = `Keep Screen Awake: ${keepAwake ? "ON" : "OFF"}`;
+      if (keepAwake) {
+        requestWakeLock();
+      } else {
+        releaseWakeLock();
+      }
+    });
+
+    document.getElementById("pause-toggle").addEventListener("click", () => {
+      tourPaused = !tourPaused;
+      document.getElementById("pause-toggle").textContent = tourPaused ? "Resume Tour" : "Pause Tour";
+      document.getElementById("paused-indicator").style.display = tourPaused ? "block" : "none";
+    });
+
+    document.addEventListener('visibilitychange', () => {
+      if (wakeLock !== null && document.visibilityState === 'visible' && keepAwake) {
+        requestWakeLock();
+      }
+    });
+
+    requestWakeLock();
+
+    const routeModeSelect = document.getElementById("route-mode");
+    let routeMode = routeModeSelect.value;
+    routeModeSelect.addEventListener("change", () => {
+      routeMode = routeModeSelect.value;
+      document.getElementById("status").textContent += `\nRouting mode set to: ${routeMode}`;
+    });
+
+    function speak(text) {
+      if (!text || text === lastSpoken) return;
+      const msg = new SpeechSynthesisUtterance(text);
+      msg.onend = () => {
+        lastSpoken = text;
+        if (!tourPaused) {
+          setTimeout(() => {
+            getCurrentLocation();
+          }, 5000);
+        }
+      };
+      window.speechSynthesis.speak(msg);
+    }
+
+    function showImage(src, captionText = "") {
+      const container = document.getElementById("image-container");
+      if (src) {
+        container.innerHTML = `
+          <div class="show">
+            <img src="${src}" alt="Landmark">
+            <div id="caption">${captionText}</div>
+          </div>`;
+      } else {
+        container.innerHTML = "";
+      }
+    }
+
+    async function getPlaceName(lat, lon) {
+      const url = `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lon}`;
+      const res = await fetch(url);
+      const data = await res.json();
+      return data.name || data.display_name || "";
+    }
+
+    async function getWikipediaSummary(query) {
+      const apiUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(query)}`;
+      const res = await fetch(apiUrl);
+      if (!res.ok) throw new Error("Wikipedia page not found");
+      const data = await res.json();
+      if (data.thumbnail && data.thumbnail.source) {
+        showImage(data.thumbnail.source, data.title);
+      } else {
+        showImage("", "");
+      }
+      return data.extract || "";
+    }
+
+    function getCurrentLocation() {
+      if (navigator.geolocation && !tourPaused) {
+        navigator.geolocation.getCurrentPosition(handleLocation, err => {
+          document.getElementById("status").textContent = `Location error: ${err.message}`;
+          if (err.code === 1) showPermissionHelp();
+        }, {
+          enableHighAccuracy: true,
+          maximumAge: 0,
+          timeout: 5000
+        });
+      }
+    }
+
+    async function handleLocation(position) {
+      const lat = position.coords.latitude;
+      const lon = position.coords.longitude;
+      let statusText = `Your location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
+
+      if (navigator.onLine) {
+        try {
+          const placeName = await getPlaceName(lat, lon);
+          statusText += `\nNearest place: ${placeName}`;
+          const summary = await getWikipediaSummary(placeName);
+          if (summary) speak(summary);
+        } catch (error) {
+          console.warn("Online lookup failed.");
+        }
+      } else {
+        statusText += "\nOffline mode active.";
+      }
+
+      document.getElementById("status").textContent = statusText;
+    }
+
+    function showPermissionHelp() {
+      const helpText = `\n\nLocation access is blocked.\n\nTo enable it:\n- Tap the three dots menu in your browser (top right).\n- Choose 'Permissions' or 'Site settings'.\n- Set Location to 'Allow'.\n- Refresh this page.`;
+      document.getElementById("status").textContent += helpText;
+      document.getElementById("status").classList.add("error");
+    }
+
+    window.addEventListener('online', () => isOnline = true);
+    window.addEventListener('offline', () => isOnline = false);
+
+    getCurrentLocation();
+  </script>
+</body>
+</html>
