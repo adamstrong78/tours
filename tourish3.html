@@ -55,6 +55,7 @@
   
   <div id="map-container">
     <div id="map"></div>
+  <div id="status">Getting your location…</div>
   </div>
   <div id="image-container"></div>
 
@@ -175,8 +176,6 @@
       const lat = position.coords.latitude;
       const lon = position.coords.longitude;
       initMap(lat, lon);
-      const lat = position.coords.latitude;
-      const lon = position.coords.longitude;
       let statusText = `Your location: ${lat.toFixed(5)}, ${lon.toFixed(5)}`;
 
       if (navigator.onLine) {
